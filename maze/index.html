@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>미로 찾기</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --wall: #e2e8f0;
+    --player: #f472b6;
+    --exit: #4ade80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 8px 10px;
+    padding: 10px 14px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; margin-right: auto; white-space: nowrap; }
+  h1 span { color: var(--accent); }
+  .diff { display: flex; background: var(--panel); border-radius: 12px; padding: 3px; }
+  .diff button {
+    background: transparent;
+    padding: 7px 14px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--muted);
+    transition: background .15s, color .15s;
+  }
+  .diff button.on { background: var(--accent); color: #0f172a; }
+  #newBtn {
+    background: var(--panel);
+    padding: 9px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  #newBtn:hover, .diff button:not(.on):hover { background: var(--panel-2); color: var(--text); }
+  #timer {
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    font-size: 20px;
+    color: var(--accent);
+    min-width: 84px;
+    text-align: right;
+  }
+
+  #stage { flex: 1; position: relative; min-height: 0; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  #hint { text-align: center; color: var(--muted); font-size: 13px; padding: 6px 0 10px; }
+
+  #pad {
+    display: none;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 8px;
+    justify-content: center;
+    padding: 8px 0 12px;
+  }
+  #pad button {
+    background: var(--panel);
+    border-radius: 14px;
+    font-size: 22px;
+    color: var(--text);
+    touch-action: none;
+  }
+  #pad button.press { background: var(--accent); color: #0f172a; }
+  #pad [data-d="0,-1"] { grid-column: 2; grid-row: 1; }
+  #pad [data-d="-1,0"] { grid-column: 1; grid-row: 2; }
+  #pad [data-d="0,1"]  { grid-column: 2; grid-row: 2; }
+  #pad [data-d="1,0"]  { grid-column: 3; grid-row: 2; }
+
+  @media (pointer: coarse) {
+    #pad { display: grid; }
+    #hint { display: none; }
+  }
+  @media (max-width: 560px) {
+    header { padding: 8px 12px; }
+    h1 { order: 1; font-size: 17px; }
+    #timer { order: 2; }
+    .diff { order: 3; flex: 1 1 auto; min-width: 60%; }
+    .diff button { flex: 1; padding: 8px 6px; }
+    #newBtn { order: 4; }
+  }
+
+  .overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(2, 6, 23, .6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    padding: 16px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s;
+    z-index: 10;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .card {
+    background: var(--panel);
+    border-radius: 20px;
+    padding: 26px 22px 22px;
+    width: 100%; max-width: 360px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    transform: scale(.9);
+    transition: transform .25s cubic-bezier(.2,1.4,.4,1);
+  }
+  .overlay.show .card { transform: scale(1); }
+  .card .emoji { font-size: 52px; line-height: 1; }
+  .card h2 { font-size: 26px; margin: 10px 0 6px; }
+  .card .msg { color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; }
+  .stats div { background: var(--bg); border-radius: 12px; padding: 10px 4px; }
+  .stats span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .record { color: #facc15; font-weight: 700; font-size: 14px; margin-top: -8px; margin-bottom: 14px; min-height: 1em; }
+  #again {
+    width: 100%;
+    background: var(--accent);
+    color: #0f172a;
+    font-weight: 800;
+    font-size: 16px;
+    padding: 13px;
+    border-radius: 12px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🧭 미로 <span>찾기</span></h1>
+    <div class="diff" id="diff">
+      <button data-diff="easy">쉬움</button>
+      <button data-diff="normal">보통</button>
+      <button data-diff="hard">어려움</button>
+    </div>
+    <button id="newBtn">🔄 새 미로</button>
+    <div id="timer">00:00.0</div>
+  </header>
+
+  <div id="stage"><canvas id="cv"></canvas></div>
+
+  <div id="pad">
+    <button data-d="0,-1" aria-label="위">▲</button>
+    <button data-d="-1,0" aria-label="왼쪽">◀</button>
+    <button data-d="0,1" aria-label="아래">▼</button>
+    <button data-d="1,0" aria-label="오른쪽">▶</button>
+  </div>
+  <div id="hint">방향키(또는 WASD)로 이동 · 화면을 드래그해도 움직여요 · N: 새 미로</div>
+
+  <div class="overlay" id="win">
+    <div class="card">
+      <div class="emoji">🎉</div>
+      <h2>탈출 성공!</h2>
+      <p class="msg" id="winMsg"></p>
+      <div class="stats">
+        <div><span>걸린 시간</span><b id="winTime"></b></div>
+        <div><span>이동 횟수</span><b id="winSteps"></b></div>
+        <div><span>최고 기록</span><b id="winBest"></b></div>
+      </div>
+      <div class="record" id="winRecord"></div>
+      <button id="again">새 미로 도전하기</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const DIFFS = {
+    easy:   { label: '쉬움',   size: 8 },
+    normal: { label: '보통',   size: 14 },
+    hard:   { label: '어려움', size: 22 },
+  };
+  const MESSAGES = {
+    easy:   ['가볍게 탈출! 이제 보통 난이도도 도전해 보세요.', '워밍업 완료! 길 찾기 감각이 좋네요.'],
+    normal: ['훌륭해요! 미로가 당신을 막지 못했어요.', '침착하게 길을 찾아냈네요. 멋져요!'],
+    hard:   ['대단해요! 미로 마스터 인정합니다. 🏆', '어려움 미로를 정복하다니, 길 찾기 천재!'],
+  };
+  const css = getComputedStyle(document.documentElement);
+  const COLOR = {
+    wall: css.getPropertyValue('--wall').trim(),
+    player: css.getPropertyValue('--player').trim(),
+    exit: css.getPropertyValue('--exit').trim(),
+    trail: 'rgba(56, 189, 248, 0.16)',
+    start: 'rgba(244, 114, 182, 0.18)',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage'), cv = $('cv'), ctx = cv.getContext('2d');
+  const timerEl = $('timer');
+
+  let diff = 'normal';
+  try { const d = localStorage.getItem('maze-diff'); if (DIFFS[d]) diff = d; } catch (e) {}
+
+  let cols, rows, grid, visited;
+  let px = 0, py = 0, vx = 0, vy = 0;
+  let startT = 0, endT = 0, won = false, steps = 0;
+  let W = 0, H = 0, dpr = 1, cell = 0, ox = 0, oy = 0, wallCache = null;
+  let particles = [];
+
+  // 벽 비트: 위=1, 오른쪽=2, 아래=4, 왼쪽=8
+  function generate(c, r) {
+    const g = new Uint8Array(c * r).fill(15);
+    const seen = new Uint8Array(c * r);
+    const stack = [0];
+    seen[0] = 1;
+    while (stack.length) {
+      const i = stack[stack.length - 1];
+      const x = i % c, y = (i / c) | 0;
+      const n = [];
+      if (y > 0     && !seen[i - c]) n.push([i - c, 1, 4]);
+      if (x < c - 1 && !seen[i + 1]) n.push([i + 1, 2, 8]);
+      if (y < r - 1 && !seen[i + c]) n.push([i + c, 4, 1]);
+      if (x > 0     && !seen[i - 1]) n.push([i - 1, 8, 2]);
+      if (!n.length) { stack.pop(); continue; }
+      const [ni, w, ow] = n[(Math.random() * n.length) | 0];
+      g[i] &= ~w; g[ni] &= ~ow; seen[ni] = 1;
+      stack.push(ni);
+    }
+    return g;
+  }
+
+  function newGame() {
+    const r = stage.getBoundingClientRect();
+    const s = DIFFS[diff].size;
+    const ar = Math.max(0.5, Math.min(2.2, r.width / Math.max(1, r.height)));
+    if (ar >= 1) { rows = s; cols = Math.max(s, Math.round(s * ar)); }
+    else { cols = s; rows = Math.max(s, Math.round(s / ar)); }
+    grid = generate(cols, rows);
+    visited = new Uint8Array(cols * rows);
+    visited[0] = 1;
+    px = py = vx = vy = 0;
+    startT = endT = 0; won = false; steps = 0; particles = [];
+    $('win').classList.remove('show');
+    layout();
+    renderTimer(0);
+  }
+
+  function layout() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = r.width; H = r.height;
+    cv.width = Math.max(1, Math.round(W * dpr));
+    cv.height = Math.max(1, Math.round(H * dpr));
+    const pad = Math.max(10, Math.min(W, H) * 0.03);
+    cell = Math.max(4, Math.min((W - pad * 2) / cols, (H - pad * 2) / rows));
+    ox = Math.round((W - cell * cols) / 2);
+    oy = Math.round((H - cell * rows) / 2);
+    buildWalls();
+  }
+
+  function buildWalls() {
+    wallCache = document.createElement('canvas');
+    wallCache.width = cv.width; wallCache.height = cv.height;
+    const c = wallCache.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.strokeStyle = COLOR.wall;
+    c.lineWidth = Math.max(1.5, cell * 0.11);
+    c.lineCap = 'round';
+    c.beginPath();
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const w = grid[y * cols + x], X = ox + x * cell, Y = oy + y * cell;
+        if (w & 1) { c.moveTo(X, Y); c.lineTo(X + cell, Y); }
+        if (w & 8) { c.moveTo(X, Y); c.lineTo(X, Y + cell); }
+        if (x === cols - 1 && (w & 2)) { c.moveTo(X + cell, Y); c.lineTo(X + cell, Y + cell); }
+        if (y === rows - 1 && (w & 4)) { c.moveTo(X, Y + cell); c.lineTo(X + cell, Y + cell); }
+      }
+    }
+    c.stroke();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function draw(t) {
+    vx += (px - vx) * 0.35; vy += (py - vy) * 0.35;
+    if (Math.abs(px - vx) < 0.002) vx = px;
+    if (Math.abs(py - vy) < 0.002) vy = py;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // 지나온 길
+    ctx.fillStyle = COLOR.trail;
+    const ins = cell * 0.18;
+    for (let i = 0; i < visited.length; i++) {
+      if (!visited[i]) continue;
+      const x = i % cols, y = (i / cols) | 0;
+      ctx.fillRect(ox + x * cell + ins, oy + y * cell + ins, cell - ins * 2, cell - ins * 2);
+    }
+    // 시작 지점
+    ctx.fillStyle = COLOR.start;
+    ctx.fillRect(ox + ins * 0.5, oy + ins * 0.5, cell - ins, cell - ins);
+
+    // 출구
+    const pulse = 0.5 + 0.5 * Math.sin(t / 300);
+    const ex = ox + (cols - 1) * cell, ey = oy + (rows - 1) * cell;
+    const ei = cell * (0.16 + 0.05 * pulse);
+    ctx.save();
+    ctx.shadowColor = COLOR.exit;
+    ctx.shadowBlur = cell * (0.3 + 0.4 * pulse);
+    ctx.fillStyle = COLOR.exit;
+    roundRect(ctx, ex + ei, ey + ei, cell - ei * 2, cell - ei * 2, cell * 0.15);
+    ctx.fill();
+    ctx.restore();
+    if (cell >= 16) {
+      ctx.font = `${Math.floor(cell * 0.42)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('🏁', ex + cell / 2, ey + cell / 2 + 1);
+    }
+
+    // 벽
+    ctx.drawImage(wallCache, 0, 0, W, H);
+
+    // 플레이어
+    const cx = ox + (vx + 0.5) * cell, cy = oy + (vy + 0.5) * cell;
+    ctx.save();
+    ctx.shadowColor = COLOR.player;
+    ctx.shadowBlur = cell * 0.5;
+    ctx.fillStyle = COLOR.player;
+    ctx.beginPath();
+    ctx.arc(cx, cy, cell * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.beginPath();
+    ctx.arc(cx - cell * 0.09, cy - cell * 0.09, cell * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 축하 꽃가루
+    if (particles.length) {
+      for (const p of particles) {
+        p.vy += 0.18; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+        ctx.restore();
+      }
+      particles = particles.filter((p) => p.y < H + 30);
+    }
+
+    if (startT && !won) renderTimer(performance.now() - startT);
+    requestAnimationFrame(draw);
+  }
+
+  function fmtClock(ms) {
+    const s = ms / 1000, m = Math.floor(s / 60), r = s - m * 60;
+    return `${String(m).padStart(2, '0')}:${r.toFixed(1).padStart(4, '0')}`;
+  }
+  function fmtTime(ms) {
+    const s = ms / 1000, m = Math.floor(s / 60);
+    return m ? `${m}분 ${(s - m * 60).toFixed(1)}초` : `${s.toFixed(1)}초`;
+  }
+  function renderTimer(ms) { timerEl.textContent = fmtClock(ms); }
+
+  function move(dx, dy) {
+    if (won || !grid) return;
+    const bit = dy < 0 ? 1 : dx > 0 ? 2 : dy > 0 ? 4 : 8;
+    if (grid[py * cols + px] & bit) return;
+    if (!startT) startT = performance.now();
+    px += dx; py += dy; steps++;
+    visited[py * cols + px] = 1;
+    if (px === cols - 1 && py === rows - 1) win();
+  }
+
+  function win() {
+    won = true;
+    endT = performance.now();
+    const ms = endT - startT;
+    renderTimer(ms);
+
+    let best = null, isRecord = false;
+    try {
+      const key = `maze-best-${diff}`;
+      const prev = parseFloat(localStorage.getItem(key));
+      if (!prev || ms < prev) { localStorage.setItem(key, String(ms)); isRecord = !!prev; best = ms; }
+      else best = prev;
+    } catch (e) { best = ms; }
+
+    const msgs = MESSAGES[diff];
+    $('winMsg').textContent = `[${DIFFS[diff].label}] ` + msgs[(Math.random() * msgs.length) | 0];
+    $('winTime').textContent = fmtTime(ms);
+    $('winSteps').textContent = `${steps}걸음`;
+    $('winBest').textContent = fmtTime(best);
+    $('winRecord').textContent = isRecord ? '⭐ 새로운 최고 기록! ⭐' : '';
+
+    const colors = ['#f472b6', '#38bdf8', '#4ade80', '#facc15', '#a78bfa', '#fb923c'];
+    for (let i = 0; i < 160; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 7;
+      particles.push({
+        x: W / 2, y: H * 0.45,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 4,
+        s: 6 + Math.random() * 6, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+        color: colors[i % colors.length],
+      });
+    }
+    try { navigator.vibrate && navigator.vibrate([40, 40, 80]); } catch (e) {}
+    setTimeout(() => { $('win').classList.add('show'); $('again').focus(); }, 450);
+  }
+
+  // 키보드
+  const KEYS = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+    W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+  };
+  window.addEventListener('keydown', (e) => {
+    if (won && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); newGame(); return; }
+    if (e.key === 'n' || e.key === 'N') { newGame(); return; }
+    const k = KEYS[e.key];
+    if (k) { e.preventDefault(); move(k[0], k[1]); }
+  });
+
+  // 화면 드래그(스와이프)로 이동
+  let drag = null;
+  cv.addEventListener('pointerdown', (e) => {
+    drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const th = Math.max(16, Math.min(cell * 0.8, 42));
+    let dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    let guard = 0;
+    while ((Math.abs(dx) >= th || Math.abs(dy) >= th) && guard++ < 20) {
+      if (Math.abs(dx) > Math.abs(dy)) { const s = Math.sign(dx); move(s, 0); drag.x += s * th; }
+      else { const s = Math.sign(dy); move(0, s); drag.y += s * th; }
+      dx = e.clientX - drag.x; dy = e.clientY - drag.y;
+    }
+  });
+  const endDrag = () => { drag = null; };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+
+  // 방향 버튼 (누르고 있으면 계속 이동)
+  document.querySelectorAll('#pad button').forEach((b) => {
+    const [dx, dy] = b.dataset.d.split(',').map(Number);
+    let t1 = 0, t2 = 0;
+    const stop = () => { clearTimeout(t1); clearInterval(t2); b.classList.remove('press'); };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      stop();
+      b.classList.add('press');
+      move(dx, dy);
+      t1 = setTimeout(() => { t2 = setInterval(() => move(dx, dy), 110); }, 260);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => b.addEventListener(ev, stop));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+
+  // 난이도
+  function setDiff(d) {
+    diff = d;
+    try { localStorage.setItem('maze-diff', d); } catch (e) {}
+    document.querySelectorAll('#diff button').forEach((b) => b.classList.toggle('on', b.dataset.diff === d));
+    newGame();
+  }
+  document.querySelectorAll('#diff button').forEach((b) => b.addEventListener('click', () => { setDiff(b.dataset.diff); b.blur(); }));
+  $('newBtn').addEventListener('click', (e) => { newGame(); e.currentTarget.blur(); });
+  $('again').addEventListener('click', newGame);
+
+  // 화면 크기가 바뀌면: 아직 움직이지 않았으면 화면 비율에 맞춰 새 미로, 진행 중이면 크기만 다시 맞춤
+  let resizeT = 0;
+  const onResize = () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      const r = stage.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      if (!startT && !won) newGame(); else layout();
+    }, 80);
+  };
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe(stage);
+  else window.addEventListener('resize', onResize);
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+  setDiff(diff);
+  requestAnimationFrame(draw);
+
+  // 테스트/디버깅용
+  window.__maze = { get state() { return { cols, rows, px, py, won, steps }; }, grid: () => grid, move };
+})();
+</script>
+</body>
+</html>
